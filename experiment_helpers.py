@@ -55,19 +55,21 @@ def extract_equal_proportion(dataframe, proportion, column=None):
     # Separate the labels
     filtered_old = {}
 
+    # > np.nan == np.nan
+    # > FALSE
+    # hence, this if statement
     for unique_value in unique_values:
-        filtered_old[unique_value] = dataframe[
-            dataframe.iloc[:, column] == unique_value # Apparently NaN == NaN is FALSE WHY PYTHON WHY
-        ].copy()
-
-    print(filtered_old.values())
-    ##############################
-    # The NaN table is getting nuked. Why???
-    ##############################
+            if pd.isna(unique_value):
+                filtered_old[unique_value] = dataframe[
+                    dataframe.iloc[:, column].isna()
+                ].copy()
+            else:
+                filtered_old[unique_value] = dataframe[
+                    dataframe.iloc[:, column] == unique_value
+                ].copy()
 
     # Extract the proportion
     filtered_new = {}
-    #unique_values = [val for val in unique_values if pd.notna(val)] # To avoid extracting NaNs
 
     for key, df in filtered_old.items():
         if pd.isna(key):
@@ -84,15 +86,3 @@ def extract_equal_proportion(dataframe, proportion, column=None):
     new_split = new_split.sample(frac=1).reset_index(drop=True)
 
     return dataframe_old, new_split
-
-
-data = pd.read_csv("data/processed_data.csv")
-
-print(len(data))
-
-data = mask_labels(data, mask_probability = 0.9)
-
-print(len(data))
-
-data, split = extract_equal_proportion(data, proportion = 0.5)
-print(len(data), len(split))
