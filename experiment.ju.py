@@ -48,8 +48,8 @@ import torch
 
 data, test = extract_equal_proportion(data, proportion=0.1)
 
-test_X = torch.tensor(test.values[:, :-1])
-test_Y = torch.tensor(test.values[:, -1])
+test_X = torch.tensor(test.values[:, :-1], dtype=torch.float32)
+test_Y = torch.tensor(test.values[:, -1], dtype=torch.long)
 
 
 # %%
@@ -57,26 +57,36 @@ import torch.nn as nn
 
 
 class model_head:
-    def __init__(self, train_X, train_Y, dev_X, dev_Y):
+    def __init__(self):
+        self.model = nn.Sequential(nn.Linear(384, 600), nn.ReLU(), nn.Linear(600, 3))
+
+    def train(
+        self,
+        train_X,
+        train_Y,
+        dev_X,
+        dev_Y,
+        max_epochs=100,
+        batch_size=10,
+        patience=5,
+        learning_rate=1e-3,
+    ):
+        # Save the data
         self.train_X = train_X
         self.train_Y = train_Y
         self.dev_X = dev_X
         self.dev_Y = dev_Y
 
-        self.model = nn.Sequential(nn.Linear(384, 600), nn.ReLU(), nn.Linear(600, 3))
-
-    def train(self, max_epochs=100, batch_size=10, patience=5, learning_rate=1e-3):
-        
         # Config
-        self.model.train()
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
         batches_per_epoch = len(self.train_X) // batch_size
-        loss_fn = nn.CrossEntropyLoss
+        loss_fn = nn.CrossEntropyLoss()
         best_dev_loss = float("inf")
         epochs_without_improvement = 0
 
         # Core loop
         for epoch in range(max_epochs):
+            self.model.train()
             for i in range(batches_per_epoch):
                 # get a batch
                 start = i * batch_size
@@ -90,7 +100,7 @@ class model_head:
                 # backward pass
                 optimizer.zero_grad()
                 loss.backward()
-                self.optimizer.step()
+                optimizer.step()
 
             self.model.eval()
 
@@ -114,7 +124,7 @@ class model_head:
         self.model.eval()
 
         with torch.no_grad():
-            logits = self.model(test_X)
+            logits = self.model(test_predictors)
             probabilities = torch.softmax(logits, dim=1)
             predictions = torch.argmax(logits, dim=1)
 
@@ -127,6 +137,25 @@ class model_head:
         if return_predictions:
             return predictions
 
+
+# %%
+# Testing if the model works
+
+experiment_data = data.copy()
+
+train, dev = extract_equal_proportion(experiment_data, proportion=0.1)
+
+train_X = torch.tensor(train.values[:, :-1], dtype=torch.float32)
+train_Y = torch.tensor(train.values[:, -1], dtype=torch.long)
+
+dev_X = torch.tensor(dev.values[:, :-1], dtype=torch.float32)
+dev_Y = torch.tensor(dev.values[:, -1], dtype=torch.long)
+
+model = model_head()
+
+model.train(train_X, train_Y, dev_X, dev_Y)
+
+model.predict(test_X[0].unsqueeze(0), return_probabilities=True)
 
 # %%
 # I will be calling each proportion of masked data a scenario
