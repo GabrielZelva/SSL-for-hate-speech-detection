@@ -91,19 +91,33 @@ print(f"Recall on hate speech: {recall_0:.3f}")
 print(f"Recall on offensive language: {recall_1:.3f}")
 print(f"Recall on neither: {recall_2:.3f}")
 
+# %% [md]
+# We can notice that even before dealing with missing labels, the model finds it hard to deal with the data imbalance. We can therefore \[I guess oversample] in order to reduce this problem. Since I will be masking the labels by a constat percentage, the lacking representation will be a persistent problem across all scenarios. To mitigate this proble, will also repeat the \[oversampling] step in every scenario.
 
 # %%
 # I will be calling each proportion of masked data a scenario
 scenarios = [0.9, 0.75, 0.5, 0.25, 0.10]
 
-# Create an empty dataframe with the following data
-# - scenario
-# - accuracy without SLL
-# - recall for each label without SSL
-# - accuracy with SLL
-# - recall for each label with SSL
+results = pd.DataFrame(
+    columns=[
+        "scenario",
+        "accNoSSL",
+        "rec0NoSSL",
+        "rec1NoSSL",
+        "rec2NoSSL",
+        "accSSL",
+        "rec0SSL",
+        "rec1SSL",
+        "rec2SSL",
+    ]
+)
 
+index = 0
 for scenario in scenarios:
+
+    # Write down the current scenario
+    results.iloc[index, 0] = scenario
+
     # Define the data situation for the scenario
 
     experiment_data = data.copy()
@@ -118,11 +132,25 @@ for scenario in scenarios:
         experiment_data, proportion=1
     )
 
-    # <Train a model without SSL>
+    # Train a model without SSL
 
-    # Save the accuracy and recall per label
+    train_X = torch.tensor(labeled_data.values[:, :-1], dtype=torch.float32)
+    train_Y = torch.tensor(labeled_data.values[:, -1], dtype=torch.long)
 
-    # </Train a model without SSL>
+    model = model_head()
+
+    model.train(train_X, train_Y, dev_X, dev_Y)
+
+    predictions = model.predict(test_X, return_predictions=True)
+
+    accuracy, recall_0, recall_1, recall_2 = evaluate_model(
+        model=model, predictions=predictions, data=test_X, ground_truth=test_Y
+    )
+
+    results.iloc[index, 1] = accuracy
+    results.iloc[index, 2] = recall_0
+    results.iloc[index, 3] = recall_1
+    results.iloc[index, 4] = recall_2
 
     # <Train a model with SSL>
 
@@ -151,6 +179,8 @@ for scenario in scenarios:
     # Evaluate
     # </Train a model with SSL>
     # Write a line into the results table
+
+    index += 1
 
 
 # %%
