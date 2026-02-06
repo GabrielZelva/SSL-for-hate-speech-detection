@@ -1,6 +1,21 @@
 import pandas as pd
 import numpy as np
+import torch
 
+def evaluate_model(model, data, predictions, ground_truth):
+    """This function evaluates the model on a test split"""
+
+    predictions = model.predict(data, return_predictions=True)
+
+    mean = (predictions == ground_truth).float().mean()
+    recalls = {}
+
+    for c in torch.unique(ground_truth):
+        tp = ((predictions == c) & (ground_truth == c)).sum().float()
+        fn = ((predictions != c) & (ground_truth == c)).sum().float()
+        recalls[int(c)] = tp / (tp + fn)
+
+    return mean, recalls[0], recalls[1], recalls[2]
 
 def mask_labels(dataframe, column=None, mask_probability=0.8):
     """This function turns a certain percentage of each label into NaNs"""
@@ -59,14 +74,14 @@ def extract_equal_proportion(dataframe, proportion, column=None):
     # > FALSE
     # hence, this if statement
     for unique_value in unique_values:
-            if pd.isna(unique_value):
-                filtered_old[unique_value] = dataframe[
-                    dataframe.iloc[:, column].isna()
-                ].copy()
-            else:
-                filtered_old[unique_value] = dataframe[
-                    dataframe.iloc[:, column] == unique_value
-                ].copy()
+        if pd.isna(unique_value):
+            filtered_old[unique_value] = dataframe[
+                dataframe.iloc[:, column].isna()
+            ].copy()
+        else:
+            filtered_old[unique_value] = dataframe[
+                dataframe.iloc[:, column] == unique_value
+            ].copy()
 
     # Extract the proportion
     filtered_new = {}
@@ -86,3 +101,5 @@ def extract_equal_proportion(dataframe, proportion, column=None):
     new_split = new_split.sample(frac=1).reset_index(drop=True)
 
     return dataframe_old, new_split
+
+

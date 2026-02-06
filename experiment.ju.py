@@ -52,94 +52,13 @@ test_X = torch.tensor(test.values[:, :-1], dtype=torch.float32)
 test_Y = torch.tensor(test.values[:, -1], dtype=torch.long)
 
 
-# %%
-import torch.nn as nn
+# %% [md]
+# Aside from the data, I need a model to play with, or to be more precise, the head of the model, as we have already established that the transformer blocks and embeddings will stay intact.
 
-
-class model_head:
-    def __init__(self):
-        self.model = nn.Sequential(nn.Linear(384, 600), nn.ReLU(), nn.Linear(600, 3))
-
-    def train(
-        self,
-        train_X,
-        train_Y,
-        dev_X,
-        dev_Y,
-        max_epochs=100,
-        batch_size=10,
-        patience=5,
-        learning_rate=1e-3,
-    ):
-        # Save the data
-        self.train_X = train_X
-        self.train_Y = train_Y
-        self.dev_X = dev_X
-        self.dev_Y = dev_Y
-
-        # Config
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
-        batches_per_epoch = len(self.train_X) // batch_size
-        loss_fn = nn.CrossEntropyLoss()
-        best_dev_loss = float("inf")
-        epochs_without_improvement = 0
-
-        # Core loop
-        for epoch in range(max_epochs):
-            self.model.train()
-            for i in range(batches_per_epoch):
-                # get a batch
-                start = i * batch_size
-                X_batch = self.train_X[start : start + batch_size]
-                Y_batch = self.train_Y[start : start + batch_size]
-
-                # forward pass
-                Y_pred = self.model(X_batch)
-                loss = loss_fn(Y_pred, Y_batch)
-
-                # backward pass
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-            self.model.eval()
-
-            # Early stopping check
-            with torch.no_grad():
-                dev_pred = self.model(self.dev_X)
-                dev_loss = loss_fn(dev_pred, self.dev_Y).item()
-
-            if dev_loss < best_dev_loss:
-                best_dev_loss = dev_loss
-                epochs_without_improvement = 0
-            else:
-                epochs_without_improvement += 1
-
-            if epochs_without_improvement >= patience:
-                break
-
-    def predict(
-        self, test_predictors, return_probabilities=False, return_predictions=False
-    ):
-        self.model.eval()
-
-        with torch.no_grad():
-            logits = self.model(test_predictors)
-            probabilities = torch.softmax(logits, dim=1)
-            predictions = torch.argmax(logits, dim=1)
-
-        if return_probabilities and return_predictions:
-            return probabilities, predictions
-
-        if return_probabilities:
-            return probabilities
-
-        if return_predictions:
-            return predictions
-
+# Having said that, I defined the head class in the `model_head.py` script in order to keep this notebook clean. We can use it to get a baseline with no masked data whatsoever, that is, the ideal scenario.
 
 # %%
-# Testing if the model works
+from model_head import model_head
 
 experiment_data = data.copy()
 
@@ -155,7 +74,23 @@ model = model_head()
 
 model.train(train_X, train_Y, dev_X, dev_Y)
 
-model.predict(test_X[0].unsqueeze(0), return_probabilities=True)
+# %% [md]
+# I have also written a custom evaluation function which returns the overall accuracy and per label recall. More information can once again be found in the the `experiment_helpers.py` script.
+
+# %%
+from experiment_helpers import evaluate_model
+
+predictions = model.predict(test_X, return_predictions=True)
+
+accuracy, recall_0, recall_1, recall_2 = evaluate_model(
+    model=model, predictions=predictions, data=test_X, ground_truth=test_Y
+)
+
+print(f"Overall accuracy: {accuracy:.3f}")
+print(f"Recall on hate speech: {recall_0:.3f}")
+print(f"Recall on offensive language: {recall_1:.3f}")
+print(f"Recall on neither: {recall_2:.3f}")
+
 
 # %%
 # I will be calling each proportion of masked data a scenario
