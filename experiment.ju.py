@@ -95,6 +95,45 @@ print(f"Recall on neither: {recall_2:.3f}")
 # We can notice that even before dealing with missing labels, the model finds it hard to deal with the data imbalance. We can therefore \[I guess oversample] in order to reduce this problem. Since I will be masking the labels by a constat percentage, the lacking representation will be a persistent problem across all scenarios. To mitigate this proble, will also repeat the \[oversampling] step in every scenario.
 
 # %%
+from imblearn.over_sampling import SMOTE
+
+experiment_data = data.copy()
+
+train, dev = extract_equal_proportion(experiment_data, proportion=0.1)
+
+train_X = train.iloc[:,:-1]
+train_Y = train.iloc[:,-1]
+
+majority_count = train_Y.value_counts().max()
+target_count = int(majority_count * 0.2)
+
+smote = SMOTE(sampling_strategy={0: target_count}, k_neighbors=3)
+train_X, train_Y = smote.fit_resample(train_X, train_Y)
+
+print(train_X.head)
+
+train_X = torch.tensor(train_X, dtype=torch.float32)
+train_Y = torch.tensor(train_Y[:, -1], dtype=torch.long)
+
+dev_X = torch.tensor(dev.values[:, :-1], dtype=torch.float32)
+dev_Y = torch.tensor(dev.values[:, -1], dtype=torch.long)
+
+model = model_head()
+
+model.train(train_X, train_Y, dev_X, dev_Y)
+
+predictions = model.predict(test_X, return_predictions=True)
+
+accuracy, recall_0, recall_1, recall_2 = evaluate_model(
+    model=model, predictions=predictions, data=test_X, ground_truth=test_Y
+)
+
+print(f"Overall accuracy: {accuracy:.3f}")
+print(f"Recall on hate speech: {recall_0:.3f}")
+print(f"Recall on offensive language: {recall_1:.3f}")
+print(f"Recall on neither: {recall_2:.3f}")
+
+# %%
 # I will be calling each proportion of masked data a scenario
 scenarios = [0.9, 0.75, 0.5, 0.25, 0.10]
 
