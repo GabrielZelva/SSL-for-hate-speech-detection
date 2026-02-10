@@ -58,21 +58,27 @@ test_Y = torch.tensor(test.values[:, -1], dtype=torch.long)
 # Having said that, I defined the head class in the `model_head.py` script in order to keep this notebook clean. We can use it to get a baseline with no masked data whatsoever, that is, the ideal scenario.
 
 # %%
-from model_head import model_head
+from model_head import ModelHead
+from torch.utils.data import WeightedRandomSampler, TensorDataset, DataLoader
 
 experiment_data = data.copy()
 
 train, dev = extract_equal_proportion(experiment_data, proportion=0.1)
-
-train_X = torch.tensor(train.values[:, :-1], dtype=torch.float32)
-train_Y = torch.tensor(train.values[:, -1], dtype=torch.long)
-
 dev_X = torch.tensor(dev.values[:, :-1], dtype=torch.float32)
 dev_Y = torch.tensor(dev.values[:, -1], dtype=torch.long)
 
-model = model_head()
+train_X = train.iloc[:, :-1]
+train_Y = train.iloc[:, -1]
 
-model.train(train_X, train_Y, dev_X, dev_Y)
+train_X = torch.tensor(train_X.values, dtype=torch.float32)
+train_Y = torch.tensor(train_Y.values, dtype=torch.long)
+
+train_dataset = TensorDataset(train_X, train_Y)
+train_loader = DataLoader(train_dataset, batch_size=32)
+
+model = ModelHead()
+
+model.train(train_loader, dev_X, dev_Y)
 
 # %% [md]
 # I have also written a custom evaluation function which returns the overall accuracy and per label recall. More information can once again be found in the the `experiment_helpers.py` script.
@@ -92,35 +98,36 @@ print(f"Recall on offensive language: {recall_1:.3f}")
 print(f"Recall on neither: {recall_2:.3f}")
 
 # %% [md]
-# We can notice that even before dealing with missing labels, the model finds it hard to deal with the data imbalance. We can therefore \[I guess oversample] in order to reduce this problem. Since I will be masking the labels by a constat percentage, the lacking representation will be a persistent problem across all scenarios. To mitigate this proble, will also repeat the \[oversampling] step in every scenario.
+# We can notice that even before dealing with missing labels, the model finds it hard to deal with the data imbalance. We can therefore oversample the minority classes in order to reduce this problem. 
 
 # %%
-from imblearn.over_sampling import SMOTE
-
 experiment_data = data.copy()
 
 train, dev = extract_equal_proportion(experiment_data, proportion=0.1)
 
-train_X = train.iloc[:,:-1]
-train_Y = train.iloc[:,-1]
-
-majority_count = train_Y.value_counts().max()
-target_count = int(majority_count * 0.2)
-
-smote = SMOTE(sampling_strategy={0: target_count}, k_neighbors=3)
-train_X, train_Y = smote.fit_resample(train_X, train_Y)
-
-print(train_X.head)
-
-train_X = torch.tensor(train_X, dtype=torch.float32)
-train_Y = torch.tensor(train_Y[:, -1], dtype=torch.long)
-
 dev_X = torch.tensor(dev.values[:, :-1], dtype=torch.float32)
 dev_Y = torch.tensor(dev.values[:, -1], dtype=torch.long)
 
-model = model_head()
+train_X = train.iloc[:, :-1]
+train_Y = train.iloc[:, -1]
 
-model.train(train_X, train_Y, dev_X, dev_Y)
+train_X = torch.tensor(train_X.values, dtype=torch.float32)
+train_Y = torch.tensor(train_Y.values, dtype=torch.long)
+
+class_counts = torch.bincount(train_Y)
+class_weights = 1.0 / class_counts.float()
+sample_weights = class_weights[train_Y]
+
+sampler = WeightedRandomSampler(
+    weights=sample_weights, num_samples=len(sample_weights), replacement=True
+)
+
+train_dataset = TensorDataset(train_X, train_Y)
+train_loader = DataLoader(train_dataset, batch_size=32, sampler=sampler)
+
+model = ModelHead()
+
+model.train(train_loader, dev_X, dev_Y)
 
 predictions = model.predict(test_X, return_predictions=True)
 
@@ -132,6 +139,10 @@ print(f"Overall accuracy: {accuracy:.3f}")
 print(f"Recall on hate speech: {recall_0:.3f}")
 print(f"Recall on offensive language: {recall_1:.3f}")
 print(f"Recall on neither: {recall_2:.3f}")
+
+# %% [md]
+
+# Aaaand, I acomplished absolutely nothing with this. I assume I could probably fix this if I torture the loss function enough, adjust the decision treshold or do something to the embeddings but... This was meant to be a 15 minute exercise where I would use a library to do everything for me and I have spent... way too much time... on this already. ~40% recall on a 5% minority class is fine, so I am just going to continue. Also, I will keep oversampling for the SSL, because I would like to avoid the minoriry class being an even bigger problem when I start masking. 
 
 # %%
 # I will be calling each proportion of masked data a scenario
@@ -154,31 +165,38 @@ results = pd.DataFrame(
 index = 0
 for scenario in scenarios:
 
-    # Write down the current scenario
+    # Define the scenario data
     results.iloc[index, 0] = scenario
-
-    # Define the data situation for the scenario
 
     experiment_data = data.copy()
 
     experiment_data = mask_labels(experiment_data, mask_probability=scenario)
+
     train, dev = extract_equal_proportion(experiment_data, proportion=0.1)
 
-    dev_X = torch.tensor(dev.values[:, :-1])
-    dev_Y = torch.tensor(dev.values[:, -1])
+    dev_X = torch.tensor(dev.values[:, :-1], dtype=torch.float32)
+    dev_Y = torch.tensor(dev.values[:, -1], dtype=torch.long)
 
-    unlabeled_data, labeled_data = extract_equal_proportion(
-        experiment_data, proportion=1
+    train_X = train.iloc[:, :-1]
+    train_Y = train.iloc[:, -1]
+
+    train_X = torch.tensor(train_X.values, dtype=torch.float32)
+    train_Y = torch.tensor(train_Y.values, dtype=torch.long)
+
+    class_counts = torch.bincount(train_Y)
+    class_weights = 1.0 / class_counts.float()
+    sample_weights = class_weights[train_Y]
+
+    sampler = WeightedRandomSampler(
+        weights=sample_weights, num_samples=len(sample_weights), replacement=True
     )
 
-    # Train a model without SSL
+    train_dataset = TensorDataset(train_X, train_Y)
+    train_loader = DataLoader(train_dataset, batch_size=32, sampler=sampler)
 
-    train_X = torch.tensor(labeled_data.values[:, :-1], dtype=torch.float32)
-    train_Y = torch.tensor(labeled_data.values[:, -1], dtype=torch.long)
+    model = ModelHead()
 
-    model = model_head()
-
-    model.train(train_X, train_Y, dev_X, dev_Y)
+    model.train(train_loader, dev_X, dev_Y)
 
     predictions = model.predict(test_X, return_predictions=True)
 
