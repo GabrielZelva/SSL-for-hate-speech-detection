@@ -102,4 +102,23 @@ def evaluate_model(model, data, predictions, ground_truth):
 
     return mean, recalls[0], recalls[1], recalls[2]
 
+def promotion_mechanism(treshold):
 
+    # For i in rows
+
+        # was_there_a_promotion = False
+
+        # For index, value in enumerate(columns) # Maybe this is correct
+            # if value > treshold:
+                
+                # Put the index in a table
+                # was_there_a_promotion = True
+
+            # if was_there_a_promotion == False:
+                
+                # Put a np.nan in a table
+
+                
+
+
+    return "the results table"
