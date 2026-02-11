@@ -220,6 +220,12 @@ for scenario in scenarios:
 
     while True:
 
+        print("Starting a new SSL iteration")
+
+        if len(unlabeled) == 0: # If there is nothing left to promote
+            print("Break called from nothing left to promote")
+            break
+
         train_X = train.iloc[:, :-1]
         train_Y = train.iloc[:, -1]
 
@@ -241,23 +247,27 @@ for scenario in scenarios:
 
         model.train(train_loader, dev_X, dev_Y)
 
-
-        unlabeled_predictors = unlabeled[:,:-1]
+        unlabeled_predictors = unlabeled.iloc[:,:-1]
+        unlabeled_predictors = torch.tensor(unlabeled_predictors.values, dtype=torch.float32)
 
         probability_matrix = model.predict(unlabeled_predictors, return_probabilities=True)
 
         labeled_before = len(train)
 
-        promotion_mechanism(unlabeled, train, probability_matrix)
+        unlabeled, train = promotion_mechanism(unlabeled, train, probability_matrix)
 
         labeled_after = len(train)
 
         if labeled_before == labeled_after: # If no point promoted, then:
+            print ("Break called from no updates")
             break
-        
-        print("promoted " + str(labeled_after - labeled_before))
+
+        print("promoted " + str(labeled_after - labeled_before) + " datapoints")
+        print(str(len(unlabeled)) + " unlabeled points remain")
 
 
+
+    print("Starting evaluation")
     accuracy, recall_0, recall_1, recall_2 = evaluate_model(
         model=model, predictions=predictions, data=test_X, ground_truth=test_Y
         )
@@ -267,8 +277,28 @@ for scenario in scenarios:
     row_data.append(recall_0)
     row_data.append(recall_1)
     row_data.append(recall_2)
+
+    # deTorch the results before saving them
+    row_data = [t.item() if isinstance(t, torch.Tensor) else t for t in row_data]
     
-    results = pd.concat(results, row_data, ignore_index = True)
+    results.loc[len(results)] = row_data
+
+
+# %%
+
+results
+
+# %%
+
+
+experiment_data = data.copy()
+
+experiment_data = mask_labels(experiment_data, mask_probability=0.9)
+
+unlabeled, labeled = extract_equal_proportion(experiment_data, proportion = 1)
+
+print(len(labeled))
+print(len(unlabeled))
 
 
 # %%

@@ -119,26 +119,29 @@ def promotion_mechanism(
 
     new_labels = []
 
-    for row in len(probability_matrix):
+    for row in range(len(probability_matrix)):
         was_there_a_promotion = False
 
         for column in [0, 1, 2]:
             value = probability_matrix[row, column]
             if value > threshold:
-                new_labels.append[column]  # Culumn id = label
+                new_labels.append(column)  # Culumn id = label
                 was_there_a_promotion = True
 
         if not was_there_a_promotion:
-            new_labels.append[np.nan]
+            new_labels.append(np.nan)
 
-    unlabeled_data[:, -1] = new_labels
 
-    unlabeled_data, newly_labeled = extract_equal_proportion(
-        unlabeled_data, proportion=1
-    )
+    if not all(np.isnan(new_labels)): # If there were no promotions, don't change anything
 
-    labeled_data = pd.concat(labeled_data, newly_labeled, ignore_index=True)
+        unlabeled_data.iloc[:, -1] = new_labels
 
-    labeled_data = labeled_data.sample(frac=1).reset_index(drop=True)
+        unlabeled_data, newly_labeled = extract_equal_proportion(
+            unlabeled_data, proportion=1
+        )
+
+        labeled_data = pd.concat([labeled_data, newly_labeled], ignore_index=True)
+
+        labeled_data = labeled_data.sample(frac=1).reset_index(drop=True)
 
     return unlabeled_data, labeled_data
