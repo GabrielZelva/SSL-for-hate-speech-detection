@@ -142,9 +142,11 @@ print(f"Recall on neither: {recall_2:.3f}")
 
 # %% [md]
 
-# Aaaand, I acomplished absolutely nothing with this. I assume I could probably fix this if I torture the loss function enough, adjust the decision treshold or do something to the embeddings but... This was meant to be a 15 minute exercise where I would use a library to do everything for me and I have spent... way too much time... on this already. ~40% recall on a 5% minority class is fine, so I am just going to continue. Also, I will keep oversampling for the SSL, because I would like to avoid the minoriry class being an even bigger problem when I start masking. 
+# Aaaand, I acomplished absolutely nothing with this. I assume I could probably fix this if I torture the loss function enough, adjust the decision treshold or do something to the embeddings but... This was meant to be a 15 minute homework where I would use a library to do everything for me and I have spent... way too much time... on this already. ~40% recall on a 5% minority class is fine, so I am just going to continue. Also, I will keep oversampling for the SSL, because I would like to avoid the minoriry class being an even bigger problem when I start masking. 
 
 # %%
+from experiment_helpers import promotion_mechanism
+
 # I will be calling each proportion of masked data a scenario
 scenarios = [0.9, 0.75, 0.5, 0.25, 0.10]
 
@@ -162,20 +164,25 @@ results = pd.DataFrame(
     ]
 )
 
-index = 0
+row_data = []
+
 for scenario in scenarios:
 
     # Define the scenario data
-    results.iloc[index, 0] = scenario
+    row_data.append(scenario)
 
     experiment_data = data.copy()
 
     experiment_data = mask_labels(experiment_data, mask_probability=scenario)
 
-    train, dev = extract_equal_proportion(experiment_data, proportion=0.1)
+    unlabeled, labeled = extract_equal_proportion(experiment_data, proportion = 1)
+
+    train, dev = extract_equal_proportion(labeled, proportion=0.1)
 
     dev_X = torch.tensor(dev.values[:, :-1], dtype=torch.float32)
     dev_Y = torch.tensor(dev.values[:, -1], dtype=torch.long)
+
+    # Test a model without SSL
 
     train_X = train.iloc[:, :-1]
     train_Y = train.iloc[:, -1]
@@ -204,40 +211,64 @@ for scenario in scenarios:
         model=model, predictions=predictions, data=test_X, ground_truth=test_Y
     )
 
-    results.iloc[index, 1] = accuracy
-    results.iloc[index, 2] = recall_0
-    results.iloc[index, 3] = recall_1
-    results.iloc[index, 4] = recall_2
+    row_data.append(accuracy)
+    row_data.append(recall_0)
+    row_data.append(recall_1)
+    row_data.append(recall_2)
 
     # <Train a model with SSL>
 
     while True:
-        unlabeled_predictors = torch.tensor(dev.unlabeled_data[:, :-1])
-        labeled_predictors = torch.tensor(dev.labeled_data[:, :-1])
-        labels = torch.tensor(dev.labeled_data[:, -1])
 
-        # Train the model on labeled
+        train_X = train.iloc[:, :-1]
+        train_Y = train.iloc[:, -1]
 
-        # Predict on unlabeled
+        train_X = torch.tensor(train_X.values, dtype=torch.float32)
+        train_Y = torch.tensor(train_Y.values, dtype=torch.long)
 
-        # if any <90% probs:
+        class_counts = torch.bincount(train_Y)
+        class_weights = 1.0 / class_counts.float()
+        sample_weights = class_weights[train_Y]
 
-        # take them into a new df
+        sampler = WeightedRandomSampler(
+            weights=sample_weights, num_samples=len(sample_weights), replacement=True
+        )
 
-        # Promote them
+        train_dataset = TensorDataset(train_X, train_Y)
+        train_loader = DataLoader(train_dataset, batch_size=32, sampler=sampler)
 
-        # Join this df into the labeled
+        model = ModelHead()
 
-        # else:
+        model.train(train_loader, dev_X, dev_Y)
 
-        # break
 
-    # Once we get here, this is the final model.
-    # Evaluate
-    # </Train a model with SSL>
-    # Write a line into the results table
+        unlabeled_predictors = unlabeled[:,:-1]
 
-    index += 1
+        probability_matrix = model.predict(unlabeled_predictors, return_probabilities=True)
+
+        labeled_before = len(train)
+
+        promotion_mechanism(unlabeled, train, probability_matrix)
+
+        labeled_after = len(train)
+
+        if labeled_before == labeled_after: # If no point promoted, then:
+            break
+        
+        print("promoted " + str(labeled_after - labeled_before))
+
+
+    accuracy, recall_0, recall_1, recall_2 = evaluate_model(
+        model=model, predictions=predictions, data=test_X, ground_truth=test_Y
+        )
+
+
+    row_data.append(accuracy)
+    row_data.append(recall_0)
+    row_data.append(recall_1)
+    row_data.append(recall_2)
+    
+    results = pd.concat(results, row_data, ignore_index = True)
 
 
 # %%
