@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import torch
 
+
 def mask_labels(dataframe, column=None, mask_probability=0.8):
     """This function turns a certain percentage of each label into NaNs"""
 
@@ -87,6 +88,7 @@ def extract_equal_proportion(dataframe, proportion, column=None):
 
     return dataframe_old, new_split
 
+
 def evaluate_model(model, data, predictions, ground_truth):
     """This function evaluates the model on a test split"""
 
@@ -102,23 +104,41 @@ def evaluate_model(model, data, predictions, ground_truth):
 
     return mean, recalls[0], recalls[1], recalls[2]
 
-def promotion_mechanism(treshold):
 
-    # For i in rows
+def promotion_mechanism(
+    unlabeled_data, labeled_data, probability_matrix, threshold=0.9
+):
+    """
+    This function takes the labeled & unlabeled data and the probabilities of the labels.
+    Then, it tests if any of the probabilities have surpassed the threshold and if so,
+    assigns the corresponding label to the predictors which produced it.
+    Finally, it transfers the newly labeled data to the labeled_data dataframe.
+    It could be summed up as 'transfer data from unlabeled to labeled
+    if a pseudolabel can be assigned'
+    """
 
-        # was_there_a_promotion = False
+    new_labels = []
 
-        # For index, value in enumerate(columns) # Maybe this is correct
-            # if value > treshold:
-                
-                # Put the index in a table
-                # was_there_a_promotion = True
+    for row in len(probability_matrix):
+        was_there_a_promotion = False
 
-            # if was_there_a_promotion == False:
-                
-                # Put a np.nan in a table
+        for column in [0, 1, 2]:
+            value = probability_matrix[row, column]
+            if value > threshold:
+                new_labels.append[column]  # Culumn id = label
+                was_there_a_promotion = True
 
-                
+        if not was_there_a_promotion:
+            new_labels.append[np.nan]
 
+    unlabeled_data[:, -1] = new_labels
 
-    return "the results table"
+    unlabeled_data, newly_labeled = extract_equal_proportion(
+        unlabeled_data, proportion=1
+    )
+
+    labeled_data = pd.concat(labeled_data, newly_labeled, ignore_index=True)
+
+    labeled_data = labeled_data.sample(frac=1).reset_index(drop=True)
+
+    return unlabeled_data, labeled_data
